@@ -33,52 +33,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+// serveCmd-managed variables
 var gifDir string
 var memeDir string
 var port int
 var tplPath string
 var certPath string
 
-// serveCmd represents the serve command
-var serveCmd = &cobra.Command{
-	Use:   "serve",
-	Short: "An http server to generate memes on request.",
-	Long:  `At the moment memeoid only works with a local filesystem.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		ctl := api.Controller{
-			Handler: &api.MemeHandler{
-				ImgPath:    gifDir,
-				OutputPath: memeDir,
-				FontName:   fontName,
-				MemeURL:    "meme",
-			},
-			Router: mux.NewRouter(),
-		}
-
-		ctl.StaticRoute("/gifs/", gifDir)
-		ctl.StaticRoute("/meme/", memeDir)
-		ctl.Load(tplPath)
-		// Add prometheus metrics
-		ctl.Router.Use(telemetryMiddleware)
-		ctl.Router.Path("/metrics").Handler(promhttp.Handler())
-
-		// Handle the root of the site with the controller
-		http.Handle("/", ctl.Router)
-		portStr := fmt.Sprintf(":%d", port)
-		// Setup logging
-		customLog := handlers.CombinedLoggingHandler(os.Stdout, http.DefaultServeMux)
-		if certPath != "" {
-			key := path.Join(certPath, "privkey.pem")
-			fullchain := path.Join(certPath, "fullchain.pem")
-			// Add an HSTS header
-			ctl.Router.Use(hstsMiddleware)
-			http.ListenAndServeTLS(portStr, fullchain, key, customLog)
-		} else {
-			http.ListenAndServe(portStr, customLog)
-		}
-	},
-}
-
+// prometheus metric definition
 var httpDuration = promauto.NewHistogramVec(
 	prometheus.HistogramOpts{
 		Name: "memeoid_http_duration_seconds",
@@ -86,6 +48,85 @@ var httpDuration = promauto.NewHistogramVec(
 	},
 	[]string{"path", "gif"},
 )
+
+// serveCmd represents the serve command
+var serveCmd = &cobra.Command{
+	Use:   "serve",
+	Short: "An http server to generate memes on request.",
+	Long:  `At the moment memeoid only works with a local filesystem.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		r := mux.NewRouter()
+
+		// static routes
+		setupStaticRoute(r, "/gifs/", gifDir)
+		setupStaticRoute(r, "/meme/", memeDir)
+
+		// meme routes
+		setupMemeRoutes(r)
+
+		// Handle the root of the site with the controller
+		http.Handle("/", r)
+
+		// Add prometheus metrics
+		r.Use(telemetryMiddleware)
+		r.Path("/metrics").Handler(promhttp.Handler())
+		
+		// Setup logging
+		customLog := handlers.CombinedLoggingHandler(os.Stdout, http.DefaultServeMux)
+		
+		// Start Http server
+		portStr := fmt.Sprintf(":%d", port)
+		if certPath != "" {
+			key := path.Join(certPath, "privkey.pem")
+			fullchain := path.Join(certPath, "fullchain.pem")
+			// Add an HSTS header
+			r.Use(hstsMiddleware)
+			http.ListenAndServeTLS(portStr, fullchain, key, customLog)
+		} else {
+			http.ListenAndServe(portStr, customLog)
+		}
+	},
+}
+
+func setupStaticRoute(router *mux.Router, uriPrefix string, docRoot string) {
+	dir := http.FileServer(http.Dir(docRoot))
+	router.PathPrefix(uriPrefix).Handler(http.StripPrefix(uriPrefix, dir))
+}
+
+func setupMemeRoutes(router *mux.Router) {
+	handler := &api.MemeHandler{
+		ImgPath:    gifDir,
+		OutputPath: memeDir,
+		FontName:   fontName,
+		MemeURL:    "meme",
+	}
+	handler.LoadTemplates(tplPath)
+
+	// Homepage
+	router.Path("/").
+		Methods("GET", "HEAD").
+		HandlerFunc(handler.ListGifs)
+
+	//TODO add required query parameters and validation
+
+	// Form
+	router.Path("/generate").
+		Queries("from", "{from}").
+		Methods("GET", "HEAD").
+		HandlerFunc(handler.Form)
+
+	// I "heart" the action api
+	router.Path("/w/api.php").
+		Queries("from", "{from}").
+		Methods("GET").
+		HandlerFunc(handler.MemeFromRequest)
+
+	// Thumbnails
+	router.Path("/thumb/{width:[0-9]+}x{height:[0-9]+}/{from}").
+		Methods("GET", "HEAD").
+		HandlerFunc(handler.Preview)
+}
+
 
 func telemetryMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(
