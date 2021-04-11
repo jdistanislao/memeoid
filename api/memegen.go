@@ -17,6 +17,7 @@ limitations under the License.
 */
 
 import (
+	"bytes"
 	"crypto/sha1"
 	"encoding/json"
 	"fmt"
@@ -31,9 +32,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/gorilla/mux"
-	"github.com/lavagetto/memeoid/img"
 	"github.com/go-ozzo/ozzo-validation/v4"
+	"github.com/go-ozzo/ozzo-validation/v4/is"
+	"github.com/lavagetto/memeoid/img"
 )
 
 // MemeHandler is the base structure that
@@ -96,6 +97,37 @@ func newMemeRequest(r *http.Request) (*memeRequest, error) {
 	return &req, nil
 }
 
+type previewRequest struct {
+	From 	string	`json:"from"`
+	Width 	string	`json:"width"`
+	Height	string	`json:"height"`
+}
+
+func (r previewRequest) Validate() error {
+	return validation.ValidateStruct(&r,
+		validation.Field(&r.From, validation.Required),
+		validation.Field(&r.Width, validation.Required, is.Int),
+		validation.Field(&r.Height, validation.Required, is.Int),
+	)
+}
+
+func (r previewRequest) toUint(field string) uint {
+	value, _ := strconv.ParseUint(field, 10, 0)
+	return uint(value)
+}
+
+func newPreviewRequest(r *http.Request) (*previewRequest, error) {
+	req := previewRequest {
+		From: r.URL.Query().Get("from"),
+		Width: r.URL.Query().Get("width"),
+		Height: r.URL.Query().Get("height"),
+	}
+	if err := req.Validate(); err != nil {
+		return nil, err
+	}
+	return &req, nil
+}
+
 // LoadTemplates pre-parses the templates.
 // Must be called before starting the server.
 func (h *MemeHandler) LoadTemplates(basepath string) {
@@ -139,27 +171,6 @@ func (h *MemeHandler) htmlBanner(gifs *[]string, w http.ResponseWriter) {
 		// Yes, this is a reference to the EasyTimeLine MediaWiki extension.
 		http.Error(w, "Bad data: maybe ploticus is not installed?", http.StatusInternalServerError)
 	}
-}
-
-func (h *MemeHandler) getImageFromRequest(w http.ResponseWriter, r *http.Request) string {
-	// vars := mux.Vars(r)
-	// imageName, ok := vars["from"]
-	// if !ok {
-	// 	http.Error(w, "missing 'from' parameter", http.StatusBadRequest)
-	// 	return ""
-	// }
-	imageName := r.FormValue("from")
-	if imageName == "" {
-		http.Error(w, "missing 'from' parameter", http.StatusBadRequest)
-		return ""
-	}
-	// Check that the gif actually exists
-	imgFullPath := path.Join(h.ImgPath, imageName)
-	if _, err := os.Stat(imgFullPath); os.IsNotExist(err) {
-		http.Error(w, "image not found", http.StatusNotFound)
-		return ""
-	}
-	return imageName
 }
 
 func (h *MemeHandler) imageExists(imageName string) (string, bool) {
@@ -292,23 +303,17 @@ func (h *MemeHandler) generateMeme(srcImagePath string, req *memeRequest, dstImg
 
 // Preview returns a thumbnail, in jpeg format
 func (h *MemeHandler) Preview(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("In preview!")
-	vars := mux.Vars(r)
-	imageName := h.getImageFromRequest(w, r)
-	if imageName == "" {
+	req, err := newPreviewRequest(r)
+	if err != nil {
+		http.Error(w, fmt.Sprint(err), http.StatusBadRequest)
+		return
+	}
+	srcImgPath, srcImgExists := h.imageExists(req.From)
+	if !srcImgExists {
 		http.Error(w, "Image not found", http.StatusNotFound)
 		return
 	}
-	width, err := strconv.ParseUint(vars["width"], 10, 0)
-	if err != nil {
-		http.Error(w, "width must be specified", http.StatusBadRequest)
-	}
-	height, err := strconv.ParseUint(vars["height"], 10, 0)
-	if err != nil {
-		http.Error(w, "height must be specified", http.StatusBadRequest)
-	}
-	imgFullPath := path.Join(h.ImgPath, imageName)
-	tpl, err := img.SimpleTemplate(imgFullPath, h.FontName, 52.0, 8.0)
+	tpl, err := img.SimpleTemplate(srcImgPath, h.FontName, 52.0, 8.0)
 	if err != nil {
 		http.Error(w, "error generating the thumbnail", http.StatusInternalServerError)
 		return
@@ -319,8 +324,11 @@ func (h *MemeHandler) Preview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	m := img.Meme{Gif: g}
-	thumb := m.Preview(uint(width), uint(height))
-	w.Header().Set("Content-Type", "image/jpeg")
-	jpeg.Encode(w, thumb, nil)
+	thumb := m.Preview(req.toUint(req.Width), req.toUint(req.Height))
+	imgBuffer := new(bytes.Buffer)
+	jpeg.Encode(imgBuffer, thumb, nil)
 
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("Content-Length", strconv.Itoa(imgBuffer.Len()))
+	w.Write(imgBuffer.Bytes())
 }

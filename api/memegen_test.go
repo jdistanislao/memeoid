@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	// "io"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -168,6 +169,41 @@ func (s *MemeGenTestSuite) TestMemeForm() {
 
 			response := rec.Result()
 			s.Equal(tc.StatusCode, response.StatusCode)
+		})
+	}
+}
+
+func (s *MemeGenTestSuite) TestPreview() {
+	var testCases = []struct {
+		Uri           string
+		StatusCode    int
+	}{
+		{"http://localhost/thumb?from=whatever.gif&width=20&height=a", http.StatusBadRequest},
+		{"http://localhost/thumb?from=whatever.gif&width=a&height=20", http.StatusBadRequest},
+		{"http://localhost/thumb?width=20&height=20", http.StatusBadRequest},
+		{"http://localhost/thumb?from=666.gif&width=20&height=20", http.StatusNotFound},
+		{"http://localhost/thumb?from=gagarin.gif&width=20&height=20", http.StatusOK},
+	}
+	for _, tc := range testCases {
+		testName := fmt.Sprintf("Uri: %s - StatusCode: %d", tc.Uri, tc.StatusCode)
+		s.Run(testName, func() {
+			req := httptest.NewRequest(http.MethodGet, tc.Uri, strings.NewReader(""))
+			rec := httptest.NewRecorder()
+
+			s.Sut.Preview(rec, req)
+
+			response := rec.Result()
+			s.Equal(tc.StatusCode, response.StatusCode)
+			if response.StatusCode == http.StatusOK {
+				contentTypeHeader, ok := response.Header["Content-Type"]
+				s.True(ok, "response should include a Content-Type header")
+				s.NotEmpty(contentTypeHeader, "response should include a Content-Type header")
+				s.Equal("image/jpeg", contentTypeHeader[0])
+				
+				body := make([]byte, response.ContentLength)
+				response.Body.Read(body)
+				s.Equal("image/jpeg", http.DetectContentType(body))
+			}
 		})
 	}
 }

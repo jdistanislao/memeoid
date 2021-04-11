@@ -110,19 +110,20 @@ func setupMemeRoutes(router *mux.Router) {
 	//TODO refactor handler methods name to better match the action declader in the URL
 
 	// Form
+	// query parameters: from
 	router.Path("/generate").
-		Queries("from", "{from}").
 		Methods("GET", "HEAD").
 		HandlerFunc(handler.Form)
 
 	// I "heart" the action api
+	// query parameters: from, top, bottom
 	router.Path("/w/api.php").
-		Queries("from", "{from}").
 		Methods("GET").
 		HandlerFunc(handler.MemeFromRequest)
 
 	// Thumbnails
-	router.Path("/thumb/{width:[0-9]+}x{height:[0-9]+}/{from}").
+	// query parameters: from, width, height
+	router.Path("/thumb").
 		Methods("GET", "HEAD").
 		HandlerFunc(handler.Preview)
 }
