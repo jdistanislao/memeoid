@@ -33,6 +33,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/lavagetto/memeoid/img"
+	"github.com/go-ozzo/ozzo-validation/v4"
 )
 
 // MemeHandler is the base structure that
@@ -47,6 +48,26 @@ type MemeHandler struct {
 	// MemeURL is the url at which the file will be served
 	MemeURL   string
 	templates *template.Template
+}
+
+type generateRequest struct {
+	From string	`json:"from"`
+}
+
+func (r generateRequest) Validate() error {
+	return validation.ValidateStruct(&r,
+		validation.Field(&r.From, validation.Required),
+	)
+}
+
+func newGenerateRequest(r *http.Request) (*generateRequest, error) {
+	req := generateRequest {
+		From: r.URL.Query().Get("from"),
+	}
+	if err := req.Validate(); err != nil {
+		return nil, err
+	}
+	return &req, nil
 }
 
 // LoadTemplates pre-parses the templates.
@@ -115,13 +136,27 @@ func (h *MemeHandler) getImageFromRequest(w http.ResponseWriter, r *http.Request
 	return imageName
 }
 
+func (h *MemeHandler) imageExists(req *generateRequest) bool {
+	imgFullPath := path.Join(h.ImgPath, req.From)
+	if _, err := os.Stat(imgFullPath); os.IsNotExist(err) {
+		return false
+	}
+	return true
+}
+
 // Form returns a form that will generate the meme
 func (h *MemeHandler) Form(w http.ResponseWriter, r *http.Request) {
-	imageName := h.getImageFromRequest(w, r)
-	if imageName == "" {
+	req, err := newGenerateRequest(r)
+	if err != nil {
+		strErr := fmt.Sprint(err)
+		http.Error(w, strErr, http.StatusBadRequest)
 		return
 	}
-	err := h.templates.ExecuteTemplate(w, "generate.html.gotmpl", imageName)
+	if !h.imageExists(req) {
+		http.Error(w, "Image not found", http.StatusNotFound)
+		return
+	}
+	err = h.templates.ExecuteTemplate(w, "generate.html.gotmpl", req.From)
 	if err != nil {
 		// Yes, this is a reference to... sigh.
 		http.Error(w, "General error: is restbase calling itself?", http.StatusInternalServerError)

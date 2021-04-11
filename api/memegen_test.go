@@ -13,9 +13,10 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-const baseMemeUrl string = "url"
-const baseImgPath string = "../img/fixtures/"
-const fontName string = "DejaVuSans"
+const baseMemeUrl 		string = "url"
+const baseImgPath 		string = "../img/fixtures/"
+const baseTemplatesPath	string = "../templates"
+const fontName 			string = "DejaVuSans"
 
 type MemeGenTestSuite struct {
 	suite.Suite
@@ -42,6 +43,7 @@ func (s *MemeGenTestSuite) SetupTest() {
 		FontName:   fontName,
 		MemeURL:    baseMemeUrl,
 	}
+	s.Sut.LoadTemplates(baseTemplatesPath)
 }
 
 func (s *MemeGenTestSuite) TeardownTest() {
@@ -142,6 +144,29 @@ func (s *MemeGenTestSuite) TestMemeGenerate() {
 				filePath := path.Join(s.TempDir, fileName)
 				s.FileExists(filePath)
 			}
+		})
+	}
+}
+
+func (s *MemeGenTestSuite) TestMemeForm() {
+	var testCases = []struct {
+		Uri           string
+		StatusCode    int
+	}{
+		{"http://localhost/w/api.php", http.StatusBadRequest},
+		{"http://localhost/w/api.php?from=lala", http.StatusNotFound},
+		{"http://localhost/w/api.php?from=earth.gif", http.StatusOK},
+	}
+	for _, tc := range testCases {
+		testName := fmt.Sprintf("Uri: %s - StatusCode: %d", tc.Uri, tc.StatusCode)
+		s.Run(testName, func() {
+			req := httptest.NewRequest(http.MethodGet, tc.Uri, strings.NewReader(""))
+			rec := httptest.NewRecorder()
+
+			s.Sut.Form(rec, req)
+
+			response := rec.Result()
+			s.Equal(tc.StatusCode, response.StatusCode)
 		})
 	}
 }
