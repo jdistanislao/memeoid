@@ -116,8 +116,9 @@ func (s *MemeGenTestSuite) TestMemeGenerate() {
 		FileGenerated bool
 	}{
 		{"http://localhost/w/api.php", http.StatusBadRequest, false},
-		{"http://localhost/w/api.php?from=lala", http.StatusNotFound, false},
+		{"http://localhost/w/api.php?from=lala", http.StatusBadRequest, false},
 		{"http://localhost/w/api.php?from=earth.gif", http.StatusBadRequest, false},
+		{"http://localhost/w/api.php?from=666.gif&top=test", http.StatusNotFound, false},
 		// earth.gif is a large, animated gif. We run a single render of it.
 		{"http://localhost/w/api.php?from=earth.gif&top=test", http.StatusPermanentRedirect, true},
 		{"http://localhost/w/api.php?from=gagarin.gif&bottom=test", http.StatusPermanentRedirect, true},

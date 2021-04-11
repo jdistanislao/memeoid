@@ -70,6 +70,32 @@ func newGenerateRequest(r *http.Request) (*generateRequest, error) {
 	return &req, nil
 }
 
+type memeRequest struct {
+	From 	string	`json:"from"`
+	Top 	string	`json:"top"`
+	Bottom	string	`json:"bottom"`
+}
+
+func (r memeRequest) Validate() error {
+	return validation.ValidateStruct(&r,
+		validation.Field(&r.From, validation.Required),
+		validation.Field(&r.Top, validation.When(r.Bottom == "", validation.Required.Error("Either Top or Bottom is required."))),
+		validation.Field(&r.Bottom, validation.When(r.Top == "", validation.Required.Error("Either Top or Bottom is required."))),
+	)
+}
+
+func newMemeRequest(r *http.Request) (*memeRequest, error) {
+	req := memeRequest {
+		From: r.URL.Query().Get("from"),
+		Top: r.URL.Query().Get("top"),
+		Bottom: r.URL.Query().Get("bottom"),
+	}
+	if err := req.Validate(); err != nil {
+		return nil, err
+	}
+	return &req, nil
+}
+
 // LoadTemplates pre-parses the templates.
 // Must be called before starting the server.
 func (h *MemeHandler) LoadTemplates(basepath string) {
@@ -136,23 +162,22 @@ func (h *MemeHandler) getImageFromRequest(w http.ResponseWriter, r *http.Request
 	return imageName
 }
 
-func (h *MemeHandler) imageExists(req *generateRequest) bool {
-	imgFullPath := path.Join(h.ImgPath, req.From)
+func (h *MemeHandler) imageExists(imageName string) (string, bool) {
+	imgFullPath := path.Join(h.ImgPath, imageName)
 	if _, err := os.Stat(imgFullPath); os.IsNotExist(err) {
-		return false
+		return "", false
 	}
-	return true
+	return imgFullPath, true
 }
 
 // Form returns a form that will generate the meme
 func (h *MemeHandler) Form(w http.ResponseWriter, r *http.Request) {
 	req, err := newGenerateRequest(r)
 	if err != nil {
-		strErr := fmt.Sprint(err)
-		http.Error(w, strErr, http.StatusBadRequest)
+		http.Error(w, fmt.Sprint(err), http.StatusBadRequest)
 		return
 	}
-	if !h.imageExists(req) {
+	if _, exists := h.imageExists(req.From); !exists {
 		http.Error(w, "Image not found", http.StatusNotFound)
 		return
 	}
@@ -209,43 +234,26 @@ func (h *MemeHandler) saveImage(g *gif.GIF, path string) error {
 // MemeFromRequest generates a meme image from a request, and saves it to disk. Then sends a
 // 301 to the user.
 func (h *MemeHandler) MemeFromRequest(w http.ResponseWriter, r *http.Request) {
-	imageName := h.getImageFromRequest(w, r)
-	if imageName == "" {
-		return
-	}
-	imgFullPath := path.Join(h.ImgPath, imageName)
-	qs := r.URL.Query()
-	top := qs.Get("top")
-	bottom := qs.Get("bottom")
-	if top == "" && bottom == "" {
-		http.Error(w, "neither 'top' nor 'bottom' provided", http.StatusBadRequest)
-		return
-	}
-	uid, err := h.UID(r)
+	req, err := newMemeRequest(r)
 	if err != nil {
+		http.Error(w, fmt.Sprint(err), http.StatusBadRequest)
+		return
+	}
+	srcImgPath, srcImgExists := h.imageExists(req.From)
+	if !srcImgExists {
+		http.Error(w, "Image not found", http.StatusNotFound)
+		return
+	}
+	uid, uerr := h.UID(r)
+	if uerr != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	// Now check if the file at $outputpath/$uid.gif exists. If it does,
 	// just redirect. Else generate the file and redirect
-	fullPath := path.Join(h.OutputPath, fmt.Sprintf("%s.gif", uid))
-	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-		meme, err := img.MemeFromFile(
-			imgFullPath,
-			top,
-			bottom,
-			h.FontName,
-		)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		err = meme.Generate()
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		err = h.saveImage(meme.Gif, fullPath)
+	dstGifPath, gifExists := h.memeExists(uid)
+	if !gifExists {
+		err := h.generateMeme(srcImgPath, req, dstGifPath)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -255,10 +263,31 @@ func (h *MemeHandler) MemeFromRequest(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, redirURL, http.StatusPermanentRedirect)
 }
 
-func (h *MemeHandler) memeExists(uid string) bool {
+func (h *MemeHandler) memeExists(uid string) (string, bool) {
 	fullPath := path.Join(h.OutputPath, fmt.Sprintf("%s.gif", uid))
 	_, err := os.Stat(fullPath)
-	return !os.IsNotExist(err)
+	return fullPath, !os.IsNotExist(err)
+}
+
+func (h *MemeHandler) generateMeme(srcImagePath string, req *memeRequest, dstImgPath string) error {
+	meme, err := img.MemeFromFile(
+		srcImagePath,
+		req.Top,
+		req.Bottom,
+		h.FontName,
+	)
+	if err != nil {
+		return err
+	}
+	err = meme.Generate()
+	if err != nil {
+		return err
+	}
+	err = h.saveImage(meme.Gif, dstImgPath)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // Preview returns a thumbnail, in jpeg format

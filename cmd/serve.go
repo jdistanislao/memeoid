@@ -107,7 +107,7 @@ func setupMemeRoutes(router *mux.Router) {
 		Methods("GET", "HEAD").
 		HandlerFunc(handler.ListGifs)
 
-	//TODO add required query parameters and validation
+	//TODO refactor handler methods name to better match the action declader in the URL
 
 	// Form
 	router.Path("/generate").
