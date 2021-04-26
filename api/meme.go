@@ -35,7 +35,7 @@ limitations under the License.
 
 
 type ImageGateway interface {
-	ImageExists(string) (bool, error)
+	ImageExists(string) (string, error)
 	ListAllGifs() ([]string, error)
 }
 

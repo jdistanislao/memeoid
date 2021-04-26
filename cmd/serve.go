@@ -94,7 +94,7 @@ func setupStaticRoute(router *mux.Router, uriPrefix string, docRoot string) {
 }
 
 func setupMemeRoutes(router *mux.Router) {
-	handler := &api.MemeHandler{
+	handler := &api.ApiHandler{
 		ImgPath:    gifDir,
 		OutputPath: memeDir,
 		FontName:   fontName,

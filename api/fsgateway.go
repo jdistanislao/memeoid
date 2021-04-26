@@ -18,6 +18,8 @@ limitations under the License.
 
 import (
 	"strings"
+	"os"
+	"path"
 	"io/ioutil"
 	"path/filepath"
 )
@@ -31,8 +33,12 @@ func NewFsImageGateway(srcPath string) ImageGateway {
 	return &FsImageGateway{srcPath: srcPath}
 }
 
-func (g *FsImageGateway) ImageExists(imageName string) (bool, error) {
-	return true, nil
+func (g *FsImageGateway) ImageExists(imageName string) (string, error) {
+	imgFullPath := path.Join(g.srcPath, imageName)
+	if _, err := os.Stat(imgFullPath); os.IsNotExist(err) {
+		return "", err
+	}
+	return imgFullPath, nil
 }
 
 func (g *FsImageGateway) ListAllGifs() ([]string, error) {

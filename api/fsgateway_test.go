@@ -22,6 +22,7 @@ import (
 	"os"
 	"testing"
 	"path"
+	"strings"
 
 	"github.com/stretchr/testify/suite"
 )
@@ -51,6 +52,10 @@ func (s *FsGatewayTestSuite) SetupTest() {
 }
 
 func (s *FsGatewayTestSuite) TeardownTest() {
+	files, _ := ioutil.ReadDir(s.TempDir)
+	for _, f := range files {
+		os.Remove(path.Join(s.TempDir, f.Name()))
+	}
 	s.Sut = nil
 }
 
@@ -75,6 +80,7 @@ func (s *FsGatewayTestSuite) TestInvalidSrcPath() {
 	list, err := s.Sut.ListAllGifs()
 
 	s.NotNil(err)
+	s.True(strings.Contains(err.Error(), "open whatever: The system cannot find"))
 	s.Nil(list, "Should not return a list: %v", list)
 }
 
@@ -95,7 +101,28 @@ func (s *FsGatewayTestSuite) TestOnlyGifImagesAreListed() {
 	s.True(isInList("b.GIF", list))
 }
 
-// imageexists
+func (s *FsGatewayTestSuite) TestImageDoesNotExists() {
+	s.createFiles("b.GIF")
+
+	fullPath, err := s.Sut.ImageExists("a.gif")
+
+	s.NotNil(err)
+	s.True(strings.Contains(err.Error(), "a.gif: The system cannot find the file specified."))
+	s.Equal("", fullPath)
+}
+
+func (s *FsGatewayTestSuite) TestImageExists() {
+	s.createFiles("a.gif", "b.gif")
+
+	aFullPath, aerr := s.Sut.ImageExists("a.gif")
+	bFullPath, berr := s.Sut.ImageExists("b.GIF") // just a different case
+
+	s.Nil(aerr, "Should not return an error: %v", aerr)
+	s.True(strings.Contains(aFullPath, "a.gif"))
+
+	s.Nil(berr, "Should not return an error: %v", berr)
+	s.True(strings.Contains(bFullPath, "b.GIF"))
+}
 
 
 
