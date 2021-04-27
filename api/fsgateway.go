@@ -27,14 +27,27 @@ import (
 
 type FsImageGateway struct {
 	srcPath string
+	dstPath string
 }
 
-func NewFsImageGateway(srcPath string) ImageGateway {
-	return &FsImageGateway{srcPath: srcPath}
+func NewFsImageGateway(srcPath, dstPath string) ImageGateway {
+	return &FsImageGateway{
+		srcPath: srcPath,
+		dstPath: dstPath,
+	}
 }
 
-func (g *FsImageGateway) ImageExists(imageName string) (string, error) {
+func (g *FsImageGateway) FindImage(imageName string) (string, error) {
 	imgFullPath := path.Join(g.srcPath, imageName)
+	return g.find(imgFullPath)
+}
+
+func (g *FsImageGateway) FindMeme(memeUID string) (string, error) {
+	imgFullPath := path.Join(g.dstPath, memeUID)
+	return g.find(imgFullPath)
+}
+
+func (g *FsImageGateway) find(imgFullPath string) (string, error) {
 	if _, err := os.Stat(imgFullPath); os.IsNotExist(err) {
 		return "", err
 	}

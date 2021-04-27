@@ -31,37 +31,53 @@ import (
 
 type FsGatewayTestSuite struct {
 	suite.Suite
-	TempDir string
-	Sut     ImageGateway
+	TempSrcDir	string
+	TempDstDir	string
+	Sut     	ImageGateway
 }
 
 func (s *FsGatewayTestSuite) SetupSuite() {
-	tempdir, err := ioutil.TempDir("", "memeoid-fs-gateway")
+	tempSrcDir, err := ioutil.TempDir("", "memeoid-fs-gateway-src")
 	if err != nil {
 		panic(err)
 	}
-	s.TempDir = tempdir
+	tempDstDir, err := ioutil.TempDir("", "memeoid-fs-gateway-dst")
+	if err != nil {
+		panic(err)
+	}
+	s.TempSrcDir = tempSrcDir
+	s.TempDstDir = tempDstDir
 }
 
 func (s *FsGatewayTestSuite) TeardownSuite() {
-	os.RemoveAll(s.TempDir)
+	os.RemoveAll(s.TempSrcDir)
 }
 
 func (s *FsGatewayTestSuite) SetupTest() {
-	s.Sut = NewFsImageGateway(s.TempDir)
+	s.Sut = NewFsImageGateway(s.TempSrcDir, s.TempDstDir)
 }
 
 func (s *FsGatewayTestSuite) TeardownTest() {
-	files, _ := ioutil.ReadDir(s.TempDir)
-	for _, f := range files {
-		os.Remove(path.Join(s.TempDir, f.Name()))
-	}
+	deleteAllFiles(s.TempSrcDir)
 	s.Sut = nil
 }
 
-func (s *FsGatewayTestSuite) createFiles(filenames ...string) {
+func deleteAllFiles(dir string) {
+	files, _ := ioutil.ReadDir(dir)
+	for _, f := range files {
+		os.Remove(path.Join(dir, f.Name()))
+	}
+}
+
+func (s *FsGatewayTestSuite) createSrcFiles(filenames ...string) {
 	for _, f := range filenames {
-		ioutil.WriteFile(path.Join(s.TempDir, f), make([]byte, 1), fs.ModeTemporary)
+		ioutil.WriteFile(path.Join(s.TempSrcDir, f), make([]byte, 1), fs.ModeTemporary)
+	}
+}
+
+func (s *FsGatewayTestSuite) createMeme(filenames ...string) {
+	for _, f := range filenames {
+		ioutil.WriteFile(path.Join(s.TempDstDir, f), make([]byte, 1), fs.ModeTemporary)
 	}
 }
 
@@ -75,7 +91,7 @@ func isInList(file string, list []string) bool {
 }
 
 func (s *FsGatewayTestSuite) TestInvalidSrcPath() {
-	s.Sut = NewFsImageGateway("whatever")
+	s.Sut = NewFsImageGateway("whatever", "")
 
 	list, err := s.Sut.ListAllGifs()
 
@@ -91,7 +107,7 @@ func (s *FsGatewayTestSuite) TestNoImagesAreReturnedIfSrcPathIsEmpty() {
 }
 
 func (s *FsGatewayTestSuite) TestOnlyGifImagesAreListed() {
-	s.createFiles("a.gif", "b.GIF", "c.jpg")
+	s.createSrcFiles("a.gif", "b.GIF", "c.jpg")
 
 	list, err := s.Sut.ListAllGifs()
 
@@ -101,21 +117,44 @@ func (s *FsGatewayTestSuite) TestOnlyGifImagesAreListed() {
 	s.True(isInList("b.GIF", list))
 }
 
-func (s *FsGatewayTestSuite) TestImageDoesNotExists() {
-	s.createFiles("b.GIF")
+func (s *FsGatewayTestSuite) TestImageNotFound() {
+	s.createSrcFiles("b.GIF")
 
-	fullPath, err := s.Sut.ImageExists("a.gif")
+	fullPath, err := s.Sut.FindImage("a.gif")
 
 	s.NotNil(err)
 	s.True(strings.Contains(err.Error(), "a.gif: The system cannot find the file specified."))
 	s.Equal("", fullPath)
 }
 
-func (s *FsGatewayTestSuite) TestImageExists() {
-	s.createFiles("a.gif", "b.gif")
+func (s *FsGatewayTestSuite) TestFindImage() {
+	s.createSrcFiles("a.gif", "b.gif")
 
-	aFullPath, aerr := s.Sut.ImageExists("a.gif")
-	bFullPath, berr := s.Sut.ImageExists("b.GIF") // just a different case
+	aFullPath, aerr := s.Sut.FindImage("a.gif")
+	bFullPath, berr := s.Sut.FindImage("b.GIF") // just a different case
+
+	s.Nil(aerr, "Should not return an error: %v", aerr)
+	s.True(strings.Contains(aFullPath, "a.gif"))
+
+	s.Nil(berr, "Should not return an error: %v", berr)
+	s.True(strings.Contains(bFullPath, "b.GIF"))
+}
+
+func (s *FsGatewayTestSuite) TestMemeNotFound() {
+	s.createMeme("b.GIF")
+
+	fullPath, err := s.Sut.FindMeme("a.gif")
+
+	s.NotNil(err)
+	s.True(strings.Contains(err.Error(), "a.gif: The system cannot find the file specified."))
+	s.Equal("", fullPath)
+}
+
+func (s *FsGatewayTestSuite) TestFindMeme() {
+	s.createMeme("a.gif", "b.gif")
+
+	aFullPath, aerr := s.Sut.FindMeme("a.gif")
+	bFullPath, berr := s.Sut.FindMeme("b.GIF") // just a different case
 
 	s.Nil(aerr, "Should not return an error: %v", aerr)
 	s.True(strings.Contains(aFullPath, "a.gif"))
