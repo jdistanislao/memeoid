@@ -57,7 +57,7 @@ func (s *FsGatewayTestSuite) SetupTest() {
 	s.Sut = NewFsImageGateway(s.TempSrcDir, s.TempDstDir)
 }
 
-func (s *FsGatewayTestSuite) TeardownTest() {
+func (s *FsGatewayTestSuite) TearDownTest() {
 	deleteAllFiles(s.TempSrcDir)
 	s.Sut = nil
 }
