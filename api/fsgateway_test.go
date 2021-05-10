@@ -59,6 +59,7 @@ func (s *FsGatewayTestSuite) SetupTest() {
 
 func (s *FsGatewayTestSuite) TearDownTest() {
 	deleteAllFiles(s.TempSrcDir)
+	deleteAllFiles(s.TempDstDir)
 	s.Sut = nil
 }
 
