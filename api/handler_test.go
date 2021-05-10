@@ -46,7 +46,7 @@ func (s *MemeGenTestSuite) SetupTest() {
 	s.Sut.LoadTemplates(baseTemplatesPath)
 }
 
-func (s *MemeGenTestSuite) TeardownTest() {
+func (s *MemeGenTestSuite) TearDownTest() {
 	s.Sut = nil
 }
 
