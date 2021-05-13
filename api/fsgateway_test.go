@@ -17,12 +17,15 @@ limitations under the License.
 */
 
 import (
+	"image"
+	"image/color"
+	"image/gif"
 	"io/fs"
 	"io/ioutil"
 	"os"
-	"testing"
 	"path"
 	"strings"
+	"testing"
 
 	"github.com/stretchr/testify/suite"
 )
@@ -31,9 +34,9 @@ import (
 
 type FsGatewayTestSuite struct {
 	suite.Suite
-	TempSrcDir	string
-	TempDstDir	string
-	Sut     	ImageGateway
+	TempSrcDir string
+	TempDstDir string
+	Sut        ImageGateway
 }
 
 func (s *FsGatewayTestSuite) SetupSuite() {
@@ -49,7 +52,7 @@ func (s *FsGatewayTestSuite) SetupSuite() {
 	s.TempDstDir = tempDstDir
 }
 
-func (s *FsGatewayTestSuite) TeardownSuite() {
+func (s *FsGatewayTestSuite) TearDownSuite() {
 	os.RemoveAll(s.TempSrcDir)
 }
 
@@ -89,6 +92,18 @@ func isInList(file string, list []string) bool {
 		}
 	}
 	return false
+}
+
+func createInMemoryGif() *gif.GIF {
+	upLeft := image.Point{0, 0}
+	lowRight := image.Point{1, 1}
+	img := image.NewPaletted(image.Rectangle{upLeft, lowRight}, color.Palette{color.Black})
+
+	gif := &gif.GIF{}
+	gif.Image = append(gif.Image, img)
+	gif.Delay = append(gif.Delay, 1)
+
+	return gif
 }
 
 func (s *FsGatewayTestSuite) TestInvalidSrcPath() {
@@ -164,7 +179,24 @@ func (s *FsGatewayTestSuite) TestFindMeme() {
 	s.True(strings.Contains(bFullPath, "b.GIF"))
 }
 
+func (s *FsGatewayTestSuite) TestSave() {
+	dstPath := path.Join(s.TempDstDir, "tempGif.gif")
+	content := createInMemoryGif()
 
+	err := s.Sut.Save(content, dstPath)
+
+	s.Nil(err, "Should not return an error: %v", err)
+}
+
+func (s *FsGatewayTestSuite) TestSaveError() {
+	dstPath := path.Join("dumb", "tempGif.gif")
+	content := createInMemoryGif()
+
+	err := s.Sut.Save(content, dstPath)
+
+	s.NotNil(err)
+	s.True(strings.Contains(err.Error(), "dumb/tempGif.gif: The system cannot find the path specified"))
+}
 
 func TestFsGatewayTestSuite(t *testing.T) {
 	suite.Run(t, new(FsGatewayTestSuite))

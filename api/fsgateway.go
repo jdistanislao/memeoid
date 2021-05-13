@@ -20,6 +20,7 @@ import (
 	"strings"
 	"os"
 	"path"
+	"image/gif"
 	"io/ioutil"
 	"path/filepath"
 )
@@ -67,5 +68,14 @@ func (g *FsImageGateway) ListAllGifs() ([]string, error) {
 		}
 	}
 	return gifs, err
+}
+
+func (g *FsImageGateway) Save(content *gif.GIF, imgFullPath string) error {
+	out, err := os.Create(imgFullPath)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	return gif.EncodeAll(out, content)
 }
 
