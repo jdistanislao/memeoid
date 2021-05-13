@@ -50,7 +50,7 @@ func (s *HandlerTestSuite) SetupTest() {
 		ImgPath:    baseImgPath,
 		FontName:   fontName,
 		MemeURL:    baseMemeUrl,
-		meme:       meme,
+		Meme:       meme,
 	}
 	s.ImgGateway = imgGateway
 	s.Sut.LoadTemplates(baseTemplatesPath)

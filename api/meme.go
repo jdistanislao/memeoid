@@ -18,7 +18,8 @@ limitations under the License.
 
 import (
 	"crypto/sha1"
-    "image/gif"
+	"fmt"
+	"image/gif"
 )
 
 
@@ -67,7 +68,7 @@ func (m *Meme) CreateUID(queryString string) (string, error) {
 		return "", err
 	}
 	bs := hasher.Sum(nil)
-	return string(bs), nil
+    return fmt.Sprintf("%x", bs), nil
 }
 
 func (m *Meme) Save(content *gif.GIF, imgFullPath string) error {

@@ -137,7 +137,7 @@ func (s *FsGatewayTestSuite) TestImageNotFound() {
 	fullPath, err := s.Sut.FindImage("a.gif")
 
 	s.NotNil(err)
-	s.Equal("", fullPath)
+	s.True(strings.Contains(fullPath, "a.gif"))
 }
 
 func (s *FsGatewayTestSuite) TestFindImage() {
@@ -159,7 +159,7 @@ func (s *FsGatewayTestSuite) TestMemeNotFound() {
 	fullPath, err := s.Sut.FindMeme("a.gif")
 
 	s.NotNil(err)
-	s.Equal("", fullPath)
+	s.True(strings.Contains(fullPath, "a.gif"))
 }
 
 func (s *FsGatewayTestSuite) TestFindMeme() {

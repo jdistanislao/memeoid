@@ -17,12 +17,12 @@ limitations under the License.
 */
 
 import (
-	"strings"
-	"os"
-	"path"
 	"image/gif"
 	"io/ioutil"
+	"os"
+	"path"
 	"path/filepath"
+	"strings"
 )
 
 
@@ -50,7 +50,7 @@ func (g *FsImageGateway) FindMeme(memeUID string) (string, error) {
 
 func (g *FsImageGateway) find(imgFullPath string) (string, error) {
 	if _, err := os.Stat(imgFullPath); os.IsNotExist(err) {
-		return "", err
+		return imgFullPath, err
 	}
 	return imgFullPath, nil
 }

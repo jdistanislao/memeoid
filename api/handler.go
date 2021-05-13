@@ -44,7 +44,7 @@ type ApiHandler struct {
 	MemeURL   string
 	templates *template.Template
 
-	meme *Meme
+	Meme *Meme
 }
 
 type generateRequest struct {
@@ -160,7 +160,7 @@ func (h *ApiHandler) Form(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprint(err), http.StatusBadRequest)
 		return
 	}
-	if _, exists := h.meme.ImageExists(req.From); !exists {
+	if _, exists := h.Meme.ImageExists(req.From); !exists {
 		http.Error(w, "Image not found", http.StatusNotFound)
 		return
 	}
@@ -173,7 +173,7 @@ func (h *ApiHandler) Form(w http.ResponseWriter, r *http.Request) {
 
 // ListGifs lists the available GIFs
 func (h *ApiHandler) ListGifs(w http.ResponseWriter, r *http.Request) {
-	gifs, err := h.meme.ListAllGifs()
+	gifs, err := h.Meme.ListAllGifs()
 	if err != nil {
 		http.Error(w, "Not found", http.StatusNotFound)
 		return
@@ -193,7 +193,7 @@ func (h *ApiHandler) ListGifs(w http.ResponseWriter, r *http.Request) {
 // UID returns the unique ID of the requested gif. This is determined
 // by a combination of the image name and the text (top and bottom)
 func (h *ApiHandler) UID(r *http.Request) (string, error) {
-	return h.meme.CreateUID(r.URL.Query().Encode())
+	return h.Meme.CreateUID(r.URL.Query().Encode())
 }
 
 // MemeFromRequest generates a meme image from a request, and saves it to disk. Then sends a
@@ -204,7 +204,7 @@ func (h *ApiHandler) MemeFromRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprint(err), http.StatusBadRequest)
 		return
 	}
-	srcImgPath, srcImgExists := h.meme.ImageExists(req.From)
+	srcImgPath, srcImgExists := h.Meme.ImageExists(req.From)
 	if !srcImgExists {
 		http.Error(w, "Image not found", http.StatusNotFound)
 		return
@@ -216,7 +216,8 @@ func (h *ApiHandler) MemeFromRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	// Now check if the file at $outputpath/$uid.gif exists. If it does,
 	// just redirect. Else generate the file and redirect
-	dstGifPath, gifExists := h.meme.MemeExists(uid)
+	memeGifName := fmt.Sprintf("%s.gif", uid)
+	dstGifPath, gifExists := h.Meme.MemeExists(memeGifName)
 	if !gifExists {
 		err := h.generateMeme(srcImgPath, req, dstGifPath)
 		if err != nil {
@@ -224,7 +225,7 @@ func (h *ApiHandler) MemeFromRequest(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	redirURL := fmt.Sprintf("/%s/%s.gif", h.MemeURL, uid)
+	redirURL := fmt.Sprintf("/%s/%s", h.MemeURL, memeGifName)
 	http.Redirect(w, r, redirURL, http.StatusPermanentRedirect)
 }
 
@@ -242,7 +243,7 @@ func (h *ApiHandler) generateMeme(srcImagePath string, req *memeRequest, dstImgP
 	if err != nil {
 		return err
 	}
-	err = h.meme.Save(meme.Gif, dstImgPath)
+	err = h.Meme.Save(meme.Gif, dstImgPath)
 	if err != nil {
 		return err
 	}
@@ -256,7 +257,7 @@ func (h *ApiHandler) Preview(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprint(err), http.StatusBadRequest)
 		return
 	}
-	srcImgPath, srcImgExists := h.meme.ImageExists(req.From)
+	srcImgPath, srcImgExists := h.Meme.ImageExists(req.From)
 	if !srcImgExists {
 		http.Error(w, "Image not found", http.StatusNotFound)
 		return

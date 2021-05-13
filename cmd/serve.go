@@ -94,11 +94,14 @@ func setupStaticRoute(router *mux.Router, uriPrefix string, docRoot string) {
 }
 
 func setupMemeRoutes(router *mux.Router) {
+	imageGateway := api.NewFsImageGateway(gifDir, memeDir)
+	meme := api.NewMeme(imageGateway)
 	handler := &api.ApiHandler{
 		ImgPath:    gifDir,
 		OutputPath: memeDir,
 		FontName:   fontName,
 		MemeURL:    "meme",
+		Meme:		meme,
 	}
 	handler.LoadTemplates(tplPath)
 
