@@ -3,8 +3,9 @@ package api
 import (
 	"errors"
 	"fmt"
+	"image"
+	"image/color"
 	"image/gif"
-	"io/fs"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -49,7 +50,7 @@ func (s *HandlerTestSuite) SetupTest() {
 		ImgPath:    baseImgPath,
 		FontName:   fontName,
 		MemeURL:    baseMemeUrl,
-		meme:       meme,
+		Meme:       meme,
 	}
 	s.ImgGateway = imgGateway
 	s.Sut.LoadTemplates(baseTemplatesPath)
@@ -60,10 +61,20 @@ func (s *HandlerTestSuite) TearDownTest() {
 	s.ImgGateway = nil
 }
 
-func (s *HandlerTestSuite) createSrcFiles(filenames ...string) {
-	for _, f := range filenames {
-		ioutil.WriteFile(path.Join(s.TempDir, f), make([]byte, 1), fs.ModeTemporary)
-	}
+func (s *HandlerTestSuite) createSrcGifFile(fileName string) string {
+	upLeft := image.Point{0, 0}
+	lowRight := image.Point{1024, 1024}
+	img := image.NewPaletted(image.Rectangle{upLeft, lowRight}, color.Palette{color.Black})
+
+	content := &gif.GIF{}
+	content.Image = append(content.Image, img)
+	content.Delay = append(content.Delay, 1)
+	
+	fullPath := path.Join(s.TempDir, fileName)
+	out, _ := os.Create(fullPath)
+	defer out.Close()
+	gif.EncodeAll(out, content)
+	return fullPath
 }
 
 func (s *HandlerTestSuite) TestUID() {
@@ -126,20 +137,20 @@ func (s *HandlerTestSuite) TestListGifs() {
 }
 
 func (s *HandlerTestSuite) TestMemeGenerate() {
-	// s.createSrcFiles("earth.gif", "gagarin.gif")
 	var testCases = []struct {
 		Uri           string
 		StatusCode    int
+		FileName      string
 		FileGenerated bool
 	}{
-		// {"http://localhost/w/api.php", http.StatusBadRequest, false},
-		// {"http://localhost/w/api.php?from=lala", http.StatusBadRequest, false},
-		// {"http://localhost/w/api.php?from=earth.gif", http.StatusBadRequest, false},
-		// {"http://localhost/w/api.php?from=666.gif&top=test", http.StatusNotFound, false},
-		// earth.gif is a large, animated gif. We run a single render of it.
-		{"http://localhost/w/api.php?from=earth.gif&top=test", http.StatusPermanentRedirect, true},
-		// {"http://localhost/w/api.php?from=gagarin.gif&bottom=test", http.StatusPermanentRedirect, true},
-		// {"http://localhost/w/api.php?from=gagarin.gif&bottom=test&top=test", http.StatusPermanentRedirect, true},
+
+		{"http://localhost/w/api.php", http.StatusBadRequest, "", false},
+		{"http://localhost/w/api.php?from=lala", http.StatusBadRequest, "", false},
+		{"http://localhost/w/api.php?from=earth.gif", http.StatusBadRequest, "", false},
+		{"http://localhost/w/api.php?from=666.gif&top=test", http.StatusNotFound, "", false},
+		{"http://localhost/w/api.php?from=earth.gif&top=test", http.StatusPermanentRedirect, "earth.gif", true},
+		{"http://localhost/w/api.php?from=gagarin.gif&bottom=test", http.StatusPermanentRedirect, "gagarin.gif", true},
+		{"http://localhost/w/api.php?from=gagarin.gif&bottom=test&top=test", http.StatusPermanentRedirect, "gagarin.gif", true},
 	}
 	for _, tc := range testCases {
 		testName := fmt.Sprintf("Uri: %s - StatusCode: %d - Genereate: %t", tc.Uri, tc.StatusCode, tc.FileGenerated)
@@ -151,9 +162,10 @@ func (s *HandlerTestSuite) TestMemeGenerate() {
 				s.ImgGateway.On("FindImage", mock.AnythingOfType("string")).Return("", errors.New("whatever")).Once()
 			}
 			if tc.FileGenerated {
-				s.ImgGateway.On("FindImage", mock.AnythingOfType("string")).Return("", nil).Once()
+				imgPath := s.createSrcGifFile(tc.FileName)
+				s.ImgGateway.On("FindImage", mock.AnythingOfType("string")).Return(imgPath, nil).Once()
 				s.ImgGateway.On("FindMeme", mock.AnythingOfType("string")).Return("", errors.New("whatever")).Once()
-				s.ImgGateway.On("Save").Return(nil).Once()
+				s.ImgGateway.On("Save", mock.AnythingOfType("*gif.GIF"), mock.AnythingOfType("string")).Return(nil).Once()
 			}
 
 			s.Sut.MemeFromRequest(rec, req)
@@ -161,15 +173,9 @@ func (s *HandlerTestSuite) TestMemeGenerate() {
 			response := rec.Result()
 			s.Equal(tc.StatusCode, response.StatusCode)
 			if tc.FileGenerated {
-				// locationPrefix := fmt.Sprintf("/%s/", baseMemeUrl)
 				locationHeader, ok := response.Header["Location"]
 				s.True(ok, "response should include a Location header")
 				s.NotEmpty(locationHeader, "response should include a Location header")
-
-				// // Extract location on disk from the Location Header
-				// fileName := locationHeader[0][len(locationPrefix):]
-				// filePath := path.Join(s.TempDir, fileName)
-				// s.FileExists(filePath)
 			}
 
 			s.ImgGateway.AssertExpectations(s.T())
@@ -214,19 +220,28 @@ func (s *HandlerTestSuite) TestMemeForm() {
 func (s *HandlerTestSuite) TestPreview() {
 	var testCases = []struct {
 		Uri        string
+		FileName   string
 		StatusCode int
 	}{
-		{"http://localhost/thumb?from=whatever.gif&width=20&height=a", http.StatusBadRequest},
-		{"http://localhost/thumb?from=whatever.gif&width=a&height=20", http.StatusBadRequest},
-		{"http://localhost/thumb?width=20&height=20", http.StatusBadRequest},
-		{"http://localhost/thumb?from=666.gif&width=20&height=20", http.StatusNotFound},
-		{"http://localhost/thumb?from=gagarin.gif&width=20&height=20", http.StatusOK},
+		{"http://localhost/thumb?from=whatever.gif&width=20&height=a", "", http.StatusBadRequest},
+		{"http://localhost/thumb?from=whatever.gif&width=a&height=20", "", http.StatusBadRequest},
+		{"http://localhost/thumb?width=20&height=20", "", http.StatusBadRequest},
+		{"http://localhost/thumb?from=666.gif&width=20&height=20", "", http.StatusNotFound},
+		{"http://localhost/thumb?from=gagarin.gif&width=20&height=20", "gagarin.gif", http.StatusOK},
 	}
 	for _, tc := range testCases {
 		testName := fmt.Sprintf("Uri: %s - StatusCode: %d", tc.Uri, tc.StatusCode)
 		s.Run(testName, func() {
 			req := httptest.NewRequest(http.MethodGet, tc.Uri, strings.NewReader(""))
 			rec := httptest.NewRecorder()
+
+			if tc.StatusCode == http.StatusNotFound {
+				s.ImgGateway.On("FindImage", mock.AnythingOfType("string")).Return("", errors.New("whatever")).Once()
+			}
+			if tc.StatusCode == http.StatusOK {
+				imgPath := s.createSrcGifFile(tc.FileName)
+				s.ImgGateway.On("FindImage", mock.AnythingOfType("string")).Return(imgPath, nil).Once()
+			}
 
 			s.Sut.Preview(rec, req)
 
@@ -242,6 +257,8 @@ func (s *HandlerTestSuite) TestPreview() {
 				response.Body.Read(body)
 				s.Equal("image/jpeg", http.DetectContentType(body))
 			}
+
+			s.ImgGateway.AssertExpectations(s.T())
 		})
 	}
 }
@@ -272,5 +289,6 @@ func (m *ImageGatewayMock) ListAllGifs() ([]string, error) {
 }
 
 func (m *ImageGatewayMock) Save(content *gif.GIF, imgFullPath string) error {
-	return nil
+	args := m.Called(content, imgFullPath)
+	return args.Error(0)
 }
