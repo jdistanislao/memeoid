@@ -18,8 +18,12 @@ limitations under the License.
 
 import (
 	"crypto/sha1"
+	"errors"
 	"fmt"
+	"image"
 	"image/gif"
+
+    "github.com/lavagetto/memeoid/img"
 )
 
 
@@ -30,20 +34,24 @@ type ImageGateway interface {
     Save(*gif.GIF, string) error
 }
 
-type Meme struct {
+type MemeService struct {
+    fontName string
     gateway ImageGateway
 }
 
-func NewMeme(gateway ImageGateway) *Meme {
-    return &Meme{gateway: gateway}
+func NewMemeService(fontName string, gateway ImageGateway) *MemeService {
+    return &MemeService{
+        fontName: fontName,
+        gateway: gateway,
+    }
 }
 
-func (m *Meme) ListAllGifs() (*[]string, error) {
+func (m *MemeService) ListAllGifs() (*[]string, error) {
     l, err := m.gateway.ListAllGifs()
 	return &l, err
 }
 
-func (m *Meme) ImageExists(imgName string) (string, bool) {
+func (m *MemeService) ImageExists(imgName string) (string, bool) {
     img, err := m.gateway.FindImage(imgName)
     exists := true
     if err != nil {
@@ -52,7 +60,7 @@ func (m *Meme) ImageExists(imgName string) (string, bool) {
     return img, exists
 }
 
-func (m *Meme) MemeExists(memeUID string) (string, bool) {
+func (m *MemeService) MemeExists(memeUID string) (string, bool) {
     img, err := m.gateway.FindMeme(memeUID)
     exists := true
     if err != nil {
@@ -61,7 +69,7 @@ func (m *Meme) MemeExists(memeUID string) (string, bool) {
     return img, exists
 }
 
-func (m *Meme) CreateUID(queryString string) (string, error) {
+func (m *MemeService) createUID(queryString string) (string, error) {
 	hasher := sha1.New()
 	_, err := hasher.Write([]byte(queryString))
 	if err != nil {
@@ -71,6 +79,73 @@ func (m *Meme) CreateUID(queryString string) (string, error) {
     return fmt.Sprintf("%x", bs), nil
 }
 
-func (m *Meme) Save(content *gif.GIF, imgFullPath string) error {
+func (m *MemeService) Save(content *gif.GIF, imgFullPath string) error {
 	return m.gateway.Save(content, imgFullPath)
+}
+
+func (m *MemeService) GeneratePreview(request *previewRequest) (image.Image, error) {
+    srcImgPath, srcImgExists := m.ImageExists(request.From)
+	if !srcImgExists {
+		// http.Error(w, "Image not found", http.StatusNotFound)
+		return nil, errors.New("image not found")
+	}
+	tpl, err := img.SimpleTemplate(srcImgPath, m.fontName, 52.0, 8.0)
+	if err != nil {
+		// http.Error(w, "error generating the thumbnail", http.StatusInternalServerError)
+		return nil, errors.New("error generating the thumbnail")
+	}
+	g, err := tpl.GetGif()
+	if err != nil {
+		// http.Error(w, "error generating the thumbnail", http.StatusInternalServerError)
+		return nil, errors.New("error generating the thumbnail")
+	}
+    imgMeme := img.Meme{Gif: g}
+	thumb := imgMeme.Preview(request.toUint(request.Width), request.toUint(request.Height))
+	return thumb, nil
+}
+
+func (m *MemeService) GenerateMeme(request *memeRequest, encodedUrl string) (string, error) {
+    srcImgPath, srcImgExists := m.ImageExists(request.From)
+	if !srcImgExists {
+		// http.Error(w, "Image not found", http.StatusNotFound)
+		return "", errors.New("image not found")
+	}
+	uid, uerr := m.createUID(encodedUrl)
+	if uerr != nil {
+		// http.Error(w, "internal error", http.StatusInternalServerError)
+		return "", uerr
+	}
+	// Now check if the file at $outputpath/$uid.gif exists. If it does,
+	// just redirect. Else generate the file and redirect
+	memeGifName := fmt.Sprintf("%s.gif", uid)
+	dstGifPath, gifExists := m.MemeExists(memeGifName)
+	if !gifExists {
+		err := m.generateMeme(srcImgPath, request, dstGifPath)
+		if err != nil {
+			// http.Error(w, err.Error(), http.StatusInternalServerError)
+			return "", err
+		}
+	}
+    return "", nil
+}
+
+func (m *MemeService) generateMeme(srcImagePath string, req *memeRequest, dstImgPath string) error {
+	meme, err := img.MemeFromFile(
+		srcImagePath,
+		req.Top,
+		req.Bottom,
+		m.fontName,
+	)
+	if err != nil {
+		return err
+	}
+	err = meme.Generate()
+	if err != nil {
+		return err
+	}
+	err = m.Save(meme.Gif, dstImgPath)
+	if err != nil {
+		return err
+	}
+	return nil
 }

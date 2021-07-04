@@ -44,13 +44,13 @@ func (s *HandlerTestSuite) TearDownSuite() {
 
 func (s *HandlerTestSuite) SetupTest() {
 	imgGateway := new(ImageGatewayMock)
-	meme := NewMeme(imgGateway)
+	meme := NewMemeService(imgGateway)
 	s.Sut = &ApiHandler{
 		OutputPath: s.TempDir,
 		ImgPath:    baseImgPath,
 		FontName:   fontName,
 		MemeURL:    baseMemeUrl,
-		Meme:       meme,
+		MemeService:       meme,
 	}
 	s.ImgGateway = imgGateway
 	s.Sut.LoadTemplates(baseTemplatesPath)

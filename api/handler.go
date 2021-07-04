@@ -44,7 +44,7 @@ type ApiHandler struct {
 	MemeURL   string
 	templates *template.Template
 
-	Meme *Meme
+	MemeService *MemeService
 }
 
 type generateRequest struct {
@@ -160,7 +160,7 @@ func (h *ApiHandler) Form(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprint(err), http.StatusBadRequest)
 		return
 	}
-	if _, exists := h.Meme.ImageExists(req.From); !exists {
+	if _, exists := h.MemeService.ImageExists(req.From); !exists {
 		http.Error(w, "Image not found", http.StatusNotFound)
 		return
 	}
@@ -173,7 +173,7 @@ func (h *ApiHandler) Form(w http.ResponseWriter, r *http.Request) {
 
 // ListGifs lists the available GIFs
 func (h *ApiHandler) ListGifs(w http.ResponseWriter, r *http.Request) {
-	gifs, err := h.Meme.ListAllGifs()
+	gifs, err := h.MemeService.ListAllGifs()
 	if err != nil {
 		http.Error(w, "Not found", http.StatusNotFound)
 		return
@@ -190,11 +190,11 @@ func (h *ApiHandler) ListGifs(w http.ResponseWriter, r *http.Request) {
 	h.htmlBanner(gifs, w)
 }
 
-// UID returns the unique ID of the requested gif. This is determined
-// by a combination of the image name and the text (top and bottom)
-func (h *ApiHandler) UID(r *http.Request) (string, error) {
-	return h.Meme.CreateUID(r.URL.Query().Encode())
-}
+// // UID returns the unique ID of the requested gif. This is determined
+// // by a combination of the image name and the text (top and bottom)
+// func (h *ApiHandler) UID(r *http.Request) (string, error) {
+// 	return h.MemeService.CreateUID(r.URL.Query().Encode())
+// }
 
 // MemeFromRequest generates a meme image from a request, and saves it to disk. Then sends a
 // 301 to the user.
@@ -204,51 +204,58 @@ func (h *ApiHandler) MemeFromRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprint(err), http.StatusBadRequest)
 		return
 	}
-	srcImgPath, srcImgExists := h.Meme.ImageExists(req.From)
-	if !srcImgExists {
-		http.Error(w, "Image not found", http.StatusNotFound)
+	// srcImgPath, srcImgExists := h.MemeService.ImageExists(req.From)
+	// if !srcImgExists {
+	// 	http.Error(w, "Image not found", http.StatusNotFound)
+	// 	return
+	// }
+	// uid, uerr := h.UID(r)
+	// if uerr != nil {
+	// 	http.Error(w, "internal error", http.StatusInternalServerError)
+	// 	return
+	// }
+	// // Now check if the file at $outputpath/$uid.gif exists. If it does,
+	// // just redirect. Else generate the file and redirect
+	// memeGifName := fmt.Sprintf("%s.gif", uid)
+	// dstGifPath, gifExists := h.MemeService.MemeExists(memeGifName)
+	// if !gifExists {
+	// 	err := h.generateMeme(srcImgPath, req, dstGifPath)
+	// 	if err != nil {
+	// 		http.Error(w, err.Error(), http.StatusInternalServerError)
+	// 		return
+	// 	}
+	// }
+
+	memeGifName, err := h.MemeService.GenerateMeme(req, r.URL.Query().Encode())
+	if err != nil {
+		http.Error(w, fmt.Sprint(err), http.StatusInternalServerError)
 		return
 	}
-	uid, uerr := h.UID(r)
-	if uerr != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	// Now check if the file at $outputpath/$uid.gif exists. If it does,
-	// just redirect. Else generate the file and redirect
-	memeGifName := fmt.Sprintf("%s.gif", uid)
-	dstGifPath, gifExists := h.Meme.MemeExists(memeGifName)
-	if !gifExists {
-		err := h.generateMeme(srcImgPath, req, dstGifPath)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-	}
+
 	redirURL := fmt.Sprintf("/%s/%s", h.MemeURL, memeGifName)
 	http.Redirect(w, r, redirURL, http.StatusPermanentRedirect)
 }
 
-func (h *ApiHandler) generateMeme(srcImagePath string, req *memeRequest, dstImgPath string) error {
-	meme, err := img.MemeFromFile(
-		srcImagePath,
-		req.Top,
-		req.Bottom,
-		h.FontName,
-	)
-	if err != nil {
-		return err
-	}
-	err = meme.Generate()
-	if err != nil {
-		return err
-	}
-	err = h.Meme.Save(meme.Gif, dstImgPath)
-	if err != nil {
-		return err
-	}
-	return nil
-}
+// func (h *ApiHandler) generateMeme(srcImagePath string, req *memeRequest, dstImgPath string) error {
+// 	meme, err := img.MemeFromFile(
+// 		srcImagePath,
+// 		req.Top,
+// 		req.Bottom,
+// 		h.FontName,
+// 	)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	err = meme.Generate()
+// 	if err != nil {
+// 		return err
+// 	}
+// 	err = h.MemeService.Save(meme.Gif, dstImgPath)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	return nil
+// }
 
 // Preview returns a thumbnail, in jpeg format
 func (h *ApiHandler) Preview(w http.ResponseWriter, r *http.Request) {
@@ -257,27 +264,42 @@ func (h *ApiHandler) Preview(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprint(err), http.StatusBadRequest)
 		return
 	}
-	srcImgPath, srcImgExists := h.Meme.ImageExists(req.From)
-	if !srcImgExists {
-		http.Error(w, "Image not found", http.StatusNotFound)
-		return
-	}
-	tpl, err := img.SimpleTemplate(srcImgPath, h.FontName, 52.0, 8.0)
+
+	// srcImgPath, srcImgExists := h.MemeService.ImageExists(req.From)
+	// if !srcImgExists {
+	// 	http.Error(w, "Image not found", http.StatusNotFound)
+	// 	return
+	// }
+	// tpl, err := img.SimpleTemplate(srcImgPath, h.FontName, 52.0, 8.0)
+	// if err != nil {
+	// 	http.Error(w, "error generating the thumbnail", http.StatusInternalServerError)
+	// 	return
+	// }
+	// g, err := tpl.GetGif()
+	// if err != nil {
+	// 	http.Error(w, "error generating the thumbnail", http.StatusInternalServerError)
+	// 	return
+	// }
+	// m := img.Meme{Gif: g}
+	// thumb := m.Preview(req.toUint(req.Width), req.toUint(req.Height))
+	// imgBuffer := new(bytes.Buffer)
+	// jpeg.Encode(imgBuffer, thumb, nil)
+
+	// w.Header().Set("Content-Type", "image/jpeg")
+	// w.Header().Set("Content-Length", strconv.Itoa(imgBuffer.Len()))
+	// w.Write(imgBuffer.Bytes())
+
+	thumb, err := h.MemeService.GeneratePreview(req)
 	if err != nil {
 		http.Error(w, "error generating the thumbnail", http.StatusInternalServerError)
 		return
 	}
-	g, err := tpl.GetGif()
-	if err != nil {
-		http.Error(w, "error generating the thumbnail", http.StatusInternalServerError)
-		return
-	}
-	m := img.Meme{Gif: g}
-	thumb := m.Preview(req.toUint(req.Width), req.toUint(req.Height))
+
 	imgBuffer := new(bytes.Buffer)
 	jpeg.Encode(imgBuffer, thumb, nil)
 
 	w.Header().Set("Content-Type", "image/jpeg")
 	w.Header().Set("Content-Length", strconv.Itoa(imgBuffer.Len()))
 	w.Write(imgBuffer.Bytes())
+
 }
